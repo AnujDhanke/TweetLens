@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TweetLens — Sentiment Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: #2a2a3a;
+    --accent-green: #00ff9d;
+    --accent-red: #ff3d6b;
+    --accent-blue: #4d9fff;
+    --accent-yellow: #ffd166;
+    --text: #e8e8f0;
+    --text-dim: #6b6b88;
+    --text-muted: #3a3a55;
+    --font-mono: 'Space Mono', monospace;
+    --font-display: 'Syne', sans-serif;
+    --radius: 4px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.012) 2px, rgba(255,255,255,0.012) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Grid background */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(77,159,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(77,159,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: relative; z-index: 10;
+    padding: 2rem 3rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .logo-name {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.6rem;
+    letter-spacing: -0.03em;
+    color: var(--text);
+  }
+  .logo-name span { color: var(--accent-green); }
+  .logo-sub {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .status-pill {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(0,255,157,0.06);
+    border: 1px solid rgba(0,255,157,0.2);
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-size: 0.7rem;
+    color: var(--accent-green);
+    letter-spacing: 0.1em;
+  }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    animation: blink 2s infinite;
+  }
+  @keyframes blink {
+    0%,100% { opacity:1; } 50% { opacity:0.2; }
+  }
+
+  /* ── MAIN LAYOUT ── */
+  main {
+    position: relative; z-index: 10;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 3rem;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 2rem;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    display: flex; flex-direction: column; gap: 1.2rem;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel-header::before {
+    content: '//';
+    color: var(--text-muted);
+  }
+  .panel-body { padding: 1rem; }
+
+  /* ── UPLOAD ZONE ── */
+  .drop-zone {
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 2rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent-blue);
+    background: rgba(77,159,255,0.04);
+  }
+  .drop-zone input[type="file"] {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon {
+    font-size: 2rem; margin-bottom: 0.75rem;
+    display: block;
+  }
+  .drop-label {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  .drop-label strong { color: var(--accent-blue); }
+  .drop-formats {
+    margin-top: 0.5rem;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--accent-blue);
+    background: transparent;
+    color: var(--accent-blue);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    border-radius: var(--radius);
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+  .btn:hover {
+    background: rgba(77,159,255,0.12);
+    box-shadow: 0 0 20px rgba(77,159,255,0.1);
+  }
+  .btn:disabled {
+    opacity: 0.3; cursor: not-allowed;
+  }
+  .btn.loading {
+    position: relative;
+    color: transparent;
+  }
+  .btn.loading::after {
+    content: '';
+    position: absolute; top: 50%; left: 50%;
+    width: 14px; height: 14px;
+    border: 2px solid var(--accent-blue);
+    border-top-color: transparent;
+    border-radius: 50%;
+    transform: translate(-50%,-50%);
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: translate(-50%,-50%) rotate(360deg); } }
+
+  /* ── STATS ── */
+  .stats-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;
+  }
+  .stat-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem;
+  }
+  .stat-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 0.3rem;
+  }
+  .stat-value {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .stat-card.total .stat-value  { color: var(--accent-blue); }
+  .stat-card.pos   .stat-value  { color: var(--accent-green); }
+  .stat-card.neg   .stat-value  { color: var(--accent-red); }
+  .stat-card.neu   .stat-value  { color: var(--accent-yellow); }
+
+  /* Bar chart */
+  .bar-chart { display: flex; flex-direction: column; gap: 8px; }
+  .bar-row { display: flex; align-items: center; gap: 10px; }
+  .bar-label { font-size: 0.65rem; color: var(--text-dim); width: 48px; text-align: right; }
+  .bar-track { flex: 1; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s cubic-bezier(0.34,1.56,0.64,1); width: 0; }
+  .bar-fill.pos { background: var(--accent-green); }
+  .bar-fill.neg { background: var(--accent-red); }
+  .bar-fill.neu { background: var(--accent-yellow); }
+  .bar-pct { font-size: 0.6rem; color: var(--text-dim); width: 32px; }
+
+  /* ── FILTER ── */
+  .filter-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: var(--radius);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .filter-input:focus { border-color: var(--accent-blue); }
+  .filter-input::placeholder { color: var(--text-muted); }
+
+  .seg-ctrl {
+    display: flex;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-top: 0.6rem;
+  }
+  .seg-btn {
+    flex: 1;
+    padding: 0.5rem 0;
+    background: transparent;
+    border: none;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+    border-right: 1px solid var(--border);
+  }
+  .seg-btn:last-child { border-right: none; }
+  .seg-btn.active { background: var(--accent-blue); color: #000; font-weight: 700; }
+  .seg-btn.active.pos { background: var(--accent-green); }
+  .seg-btn.active.neg { background: var(--accent-red); }
+  .seg-btn.active.neu { background: var(--accent-yellow); }
+
+  /* ── RESULTS PANEL ── */
+  .results-area { display: flex; flex-direction: column; gap: 1.2rem; }
+
+  .results-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 0.5rem;
+  }
+  .results-count {
+    font-size: 0.7rem; color: var(--text-dim);
+  }
+  .results-count strong { color: var(--text); }
+
+  /* ── TWEET CARD ── */
+  .tweets-container {
+    display: flex; flex-direction: column; gap: 0.6rem;
+    max-height: 72vh;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .tweets-container::-webkit-scrollbar { width: 4px; }
+  .tweets-container::-webkit-scrollbar-track { background: var(--surface); }
+  .tweets-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .tweet-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    border-radius: var(--radius);
+    padding: 0.85rem 1rem;
+    transition: border-color 0.15s, transform 0.15s;
+    animation: slideIn 0.25s ease both;
+  }
+  @keyframes slideIn {
+    from { opacity:0; transform: translateY(8px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+  .tweet-card:hover { transform: translateX(2px); }
+  .tweet-card.positive { border-left-color: var(--accent-green); }
+  .tweet-card.negative { border-left-color: var(--accent-red); }
+  .tweet-card.neutral  { border-left-color: var(--accent-yellow); }
+
+  .tweet-meta {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 0.5rem;
+  }
+  .sentiment-badge {
+    font-size: 0.55rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-weight: 700;
+  }
+  .positive .sentiment-badge { background: rgba(0,255,157,0.12); color: var(--accent-green); }
+  .negative .sentiment-badge { background: rgba(255,61,107,0.12); color: var(--accent-red); }
+  .neutral  .sentiment-badge { background: rgba(255,209,102,0.12); color: var(--accent-yellow); }
+
+  .score-badge {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+  }
+  .tweet-id { margin-left: auto; font-size: 0.55rem; color: var(--text-muted); }
+
+  .tweet-text {
+    font-size: 0.78rem;
+    line-height: 1.6;
+    color: var(--text);
+    word-break: break-word;
+  }
+  .tweet-text mark {
+    background: rgba(255,209,102,0.25);
+    color: var(--accent-yellow);
+    border-radius: 2px;
+    padding: 0 2px;
+  }
+
+  /* ── EMPTY / ERROR STATES ── */
+  .empty-state {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 300px;
+    color: var(--text-muted);
+    text-align: center;
+    gap: 1rem;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+  }
+  .empty-icon { font-size: 2.5rem; }
+  .empty-msg { font-size: 0.75rem; line-height: 1.6; }
+
+  .toast {
+    position: fixed; bottom: 2rem; right: 2rem;
+    background: var(--accent-red);
+    color: #fff;
+    padding: 0.75rem 1.2rem;
+    border-radius: var(--radius);
+    font-size: 0.75rem;
+    z-index: 9999;
+    animation: toastIn 0.3s ease;
+    max-width: 320px;
+  }
+  @keyframes toastIn {
+    from { opacity:0; transform: translateY(20px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+
+  /* file name display */
+  .file-name {
+    font-size: 0.65rem;
+    color: var(--accent-blue);
+    margin-top: 0.5rem;
+    word-break: break-all;
+    display: none;
+  }
+
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; padding: 1rem; }
+    header { padding: 1rem; }
+    .tweets-container { max-height: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-name">Tweet<span>Lens</span></div>
+    <div class="logo-sub">Sentiment Analysis Engine</div>
+  </div>
+  <div class="status-pill">
+    <span class="status-dot"></span>
+    TextBlob NLP · Ready
+  </div>
+</header>
+
+<main>
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <!-- Upload -->
+    <div class="panel">
+      <div class="panel-header">Upload Dataset</div>
+      <div class="panel-body" style="display:flex;flex-direction:column;gap:0.75rem;">
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileInput" accept=".csv,.xlsx,.xls"/>
+          <span class="drop-icon">📂</span>
+          <div class="drop-label"><strong>Drop your file here</strong><br/>or click to browse</div>
+          <div class="drop-formats">CSV · XLSX · XLS</div>
+        </div>
+        <div class="file-name" id="fileName"></div>
+        <button class="btn" id="analyzeBtn" disabled>▶ Run Analysis</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="panel" id="statsPanel" style="display:none;">
+      <div class="panel-header">Summary</div>
+      <div class="panel-body" style="display:flex;flex-direction:column;gap:0.85rem;">
+        <div class="stats-grid">
+          <div class="stat-card total"><div class="stat-label">Total</div><div class="stat-value" id="statTotal">0</div></div>
+          <div class="stat-card pos">  <div class="stat-label">Positive</div><div class="stat-value" id="statPos">0</div></div>
+          <div class="stat-card neg">  <div class="stat-label">Negative</div><div class="stat-value" id="statNeg">0</div></div>
+          <div class="stat-card neu">  <div class="stat-label">Neutral</div> <div class="stat-value" id="statNeu">0</div></div>
+        </div>
+        <div class="bar-chart">
+          <div class="bar-row"><div class="bar-label">POS</div><div class="bar-track"><div class="bar-fill pos" id="barPos"></div></div><div class="bar-pct" id="pctPos"></div></div>
+          <div class="bar-row"><div class="bar-label">NEG</div><div class="bar-track"><div class="bar-fill neg" id="barNeg"></div></div><div class="bar-pct" id="pctNeg"></div></div>
+          <div class="bar-row"><div class="bar-label">NEU</div><div class="bar-track"><div class="bar-fill neu" id="barNeu"></div></div><div class="bar-pct" id="pctNeu"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="panel" id="filterPanel" style="display:none;">
+      <div class="panel-header">Filter</div>
+      <div class="panel-body" style="display:flex;flex-direction:column;gap:0.6rem;">
+        <input class="filter-input" type="text" id="searchInput" placeholder="Search keyword…"/>
+        <div class="seg-ctrl">
+          <button class="seg-btn active"     data-filter="all" >All</button>
+          <button class="seg-btn active pos" data-filter="positive">Pos</button>
+          <button class="seg-btn active neg" data-filter="negative">Neg</button>
+          <button class="seg-btn active neu" data-filter="neutral" >Neu</button>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- RESULTS -->
+  <section class="results-area">
+    <div class="results-toolbar" id="resultsToolbar" style="display:none;">
+      <div class="results-count">Showing <strong id="showCount">0</strong> tweets</div>
+    </div>
+    <div id="mainContent">
+      <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <div class="empty-msg">Upload a CSV or Excel file containing tweets<br/>to begin sentiment analysis.</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  let allTweets = [];
+  let currentFilter = 'all';
+  let selectedFile = null;
+
+  const fileInput   = document.getElementById('fileInput');
+  const analyzeBtn  = document.getElementById('analyzeBtn');
+  const dropZone    = document.getElementById('dropZone');
+  const fileNameEl  = document.getElementById('fileName');
+
+  // Drag-and-drop
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f) setFile(f);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+
+  function setFile(f) {
+    selectedFile = f;
+    fileNameEl.textContent = '📄 ' + f.name;
+    fileNameEl.style.display = 'block';
+    analyzeBtn.disabled = false;
+  }
+
+  analyzeBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    analyzeBtn.classList.add('loading');
+    analyzeBtn.disabled = true;
+
+    const fd = new FormData();
+    fd.append('file', selectedFile);
+
+    try {
+      const res = await fetch('/analyze', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.error) { showToast(data.error); return; }
+      allTweets = data.tweets;
+      updateStats(data);
+      renderTweets();
+      document.getElementById('statsPanel').style.display = '';
+      document.getElementById('filterPanel').style.display = '';
+      document.getElementById('resultsToolbar').style.display = '';
+    } catch(e) {
+      showToast('Server error. Make sure the Flask app is running.');
+    } finally {
+      analyzeBtn.classList.remove('loading');
+      analyzeBtn.disabled = false;
+    }
+  });
+
+  function updateStats(data) {
+    document.getElementById('statTotal').textContent = data.total;
+    document.getElementById('statPos').textContent   = data.positive_count;
+    document.getElementById('statNeg').textContent   = data.negative_count;
+    document.getElementById('statNeu').textContent   = data.neutral_count;
+
+    const t = data.total || 1;
+    const pp = (data.positive_count/t*100).toFixed(0);
+    const np = (data.negative_count/t*100).toFixed(0);
+    const nep= (data.neutral_count /t*100).toFixed(0);
+    setTimeout(() => {
+      document.getElementById('barPos').style.width = pp + '%';
+      document.getElementById('barNeg').style.width = np + '%';
+      document.getElementById('barNeu').style.width = nep + '%';
+    }, 100);
+    document.getElementById('pctPos').textContent = pp + '%';
+    document.getElementById('pctNeg').textContent = np + '%';
+    document.getElementById('pctNeu').textContent = nep + '%';
+  }
+
+  // Segment filter buttons
+  document.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      renderTweets();
+    });
+  });
+
+  document.getElementById('searchInput').addEventListener('input', renderTweets);
+
+  function renderTweets() {
+    const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+    let filtered = allTweets;
+
+    if (currentFilter !== 'all') filtered = filtered.filter(t => t.sentiment === currentFilter);
+    if (keyword) filtered = filtered.filter(t => t.original.toLowerCase().includes(keyword));
+
+    document.getElementById('showCount').textContent = filtered.length;
+
+    const container = document.getElementById('mainContent');
+    if (filtered.length === 0) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-msg">No tweets match your filter.</div></div>`;
+      return;
+    }
+
+    const html = filtered.map((t, i) => {
+      const text = keyword
+        ? t.original.replace(new RegExp(`(${escapeRe(keyword)})`, 'gi'), '<mark>$1</mark>')
+        : escapeHtml(t.original);
+      const scoreColor = t.score > 0 ? 'var(--accent-green)' : t.score < 0 ? 'var(--accent-red)' : 'var(--accent-yellow)';
+      return `
+        <div class="tweet-card ${t.sentiment}" style="animation-delay:${Math.min(i*0.02,0.4)}s">
+          <div class="tweet-meta">
+            <span class="sentiment-badge">${t.sentiment}</span>
+            <span class="score-badge" style="color:${scoreColor}">score: ${t.score > 0 ? '+' : ''}${t.score}</span>
+            <span class="tweet-id">#${t.id + 1}</span>
+          </div>
+          <div class="tweet-text">${keyword ? text : escapeHtml(t.original)}</div>
+        </div>`;
+    }).join('');
+
+    container.innerHTML = `<div class="tweets-container">${html}</div>`;
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function escapeRe(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  }
+
+  function showToast(msg) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = '⚠ ' + msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  }
+</script>
+</body>
+</html>
